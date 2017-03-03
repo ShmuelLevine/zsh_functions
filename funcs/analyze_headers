@@ -72,13 +72,13 @@ function analyze_headers() {
             # The expansion =(...) saves the output of the internal expression into a temporary file - the temp. file
             # filename is expanded into the expression.  Here, a temporary file containing just the line #include "XXX"
             # is created and pre-processed as a C++ source file.
-            /usr/bin/g++-6 -DBOOST_DISABLE_ASSERTS -DBOOST_LOG_DYN_LINK=1 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DHPX_DISABLE_ASSERTS -DHPX_LIBRARY_EXPORTS -DModeling_Model_Fitter_EXPORTS -I/local/src/fx_hpx/src/../include/gtest/include -I/local/src/fx_hpx/src/../include -I/local/src/fx_hpx/src -I/local/src/fx_hpx/src/lib -I$(pwd) -I/include -I/usr/src/boost/1.63/gcc -I/opt/intel/compilers_and_libraries/linux/mkl/include -I/opt/hpx/1.0/gcc/include -I/opt/hpx/1.0/gcc/include/hpx/external -I/opt/intel/vtune_amplifier_xe_2017.1.0.486011/include -O2 -g -DNDEBUG -fPIC -Wall -g -O3 -Wno-unused-lambda-capture -Wno-unused-variable -Wno-unknown-pragmas -Wno-unused-local-typedefs -Winvalid-pch -std=c++14 -std=gnu++14 -x c++ -E =(echo '#include ' ${i}) -o ${outfile} -I$(pwd)/${d:h}
+            /usr/bin/g++-6 -DBOOST_DISABLE_ASSERTS -DBOOST_LOG_DYN_LINK=1 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DHPX_DISABLE_ASSERTS -DHPX_LIBRARY_EXPORTS -DModeling_Model_Fitter_EXPORTS -I/local/src/fx_hpx/src/../include/gtest/include -I/local/src/fx_hpx/src/../include -I/local/src/fx_hpx/src -I/local/src/fx_hpx/src/lib -I$(pwd) -I/include -I/usr/src/boost/1.63/gcc -I/opt/intel/compilers_and_libraries/linux/mkl/include -I/opt/hpx/1.0/gcc/include -I/opt/hpx/1.0/gcc/include/hpx/external -I/opt/intel/vtune_amplifier_xe_2017.1.0.486011/include -O2 -g -DNDEBUG -fPIC -Wall -g -O3 -Wno-unused-lambda-capture -Wno-unused-variable -Wno-unknown-pragmas -Wno-unused-local-typedefs -Winvalid-pch -std=c++14 -std=gnu++14 -x c++ -E =(echo '#include ' ${i}) -o ${outfile} -I$(pwd)/${d:h} 2>/dev/null
 
             # Get the length of the pre-processed file in lines
-            wc -l ${outfile}>> ${RESULTS}.tmp
+            wc -l ${outfile} 2>/dev/null >> ${RESULTS}.tmp
 
             # Delete the pre-processed file (these files are very large)
-            rm $outfile
+            rm -f $outfile
         done
 
         # Cleanup.  Delete temporary directory containing pre-processed files
@@ -96,7 +96,7 @@ function analyze_headers() {
 
         rm -r ${RESULT_PATH}/${last_d}
 
-        sort -n ${RESULTS}.tmp > ${RESULTS}
+        [[ -s ${RESULTS}.tmp ]] && sort -n ${RESULTS}.tmp > ${RESULTS}
 
         # Since wc is run from the current directory, the results will have the full
         # directory structure of the temporary (i.e. pre-processed) files.  This is ugly and confusing
