@@ -1,56 +1,119 @@
 function analyze_headers() {
 
+    # Take a copy of REPORTTIME.  It makes the output messy (in verbose mode), so set to impossibly
+    # large number while this function is running.  It is restored at the end of the function
+    local OLD_REPORTTIME=${REPORTTIME}
+    REPORTTIME=99999999
+
     [[ -z $1 ]] && {echo "${0##*/}: parameter expected" >&2; exit 1}
-    #verbose=0
+
     while getopts "ro:v" par; do
         case $par in
             (r) RECURSE=1;;
-            (o) OUTPATH=$OPTARG;;
+            (o) RESULT_PATH=$OPTARG;;
             (v) verbose=1;;
             (?) exit 1;;
         esac
     done
     shift $(( OPTIND - 1 ))
 
-    [[ -n $OUTPATH ]] && RESULT_PATH=${OUTPATH} || RESULT_PATH=".headers"
-    #echo RESULT_PATH is $RESULT_PATH
-    #pause
-    #RESULT_PATH=".headers"
-    #echo RESULT_PATH is $RESULT_PATH
-    [[ -d ${RESULT_PATH} ]] || mkdir "${RESULT_PATH}"
+    # Check if RESULT_PATH is set by command-line option; if not, use default.
+    # Test if RESULT_PATH exists; create if not
+    [[ -d ${RESULT_PATH:=.headers} ]] || mkdir "${RESULT_PATH}"
 
 
     for d in $@; do
-        RESULTS="${RESULT_PATH}/${d:q:gs/\//__/:t}"
-        #echo $RESULTS
-        #pause
-        #[[ -d ${RESULTS:h} ]] || {echo creating directory}
-        echo "" > ${RESULTS}.tmp
-        [[ -d ${RESULT_PATH}/$d ]] ||  { [[ -z $verbose ]] || echo "Creating output directory "${RESULT_PATH}/$d" ..."; mkdir -p "${RESULT_PATH}/$d" }
+
+        # Assign the filename of the aggregated results to a variable RESULTS
+        # The expansion modifier flattens the output by replacing nested
+        # directories with a double underscore (__)
+        RESULTS="${RESULT_PATH}/${d:gs/\//__/}"
+
+#        echo "" > ${RESULTS}.tmp
+
+        # Create a temporary directory for saving the preprocessed files, if it doesn't already exist
+        # Note that the directory should not exist, as it is deleted at the end of the script
+        [[ -d ${RESULT_PATH}/$d ]] ||  {
+            [[ -z $verbose ]] ||
+                echo "Creating output directory "${RESULT_PATH}/$d" ...";
+            mkdir -p "${RESULT_PATH}/$d"
+        }
+
+        # Display current file if verbose option is set
         [[ -z $verbose ]] || {
             echo "Processing file: $d";
             echo ""
             TOTAL_INCLUDES=$(sed -ne '/^#include /p' ${d} | wc -l)
             CURRENT_FILE_NO=0
         }
-        for i in $(sed -ne '/^#include /p' ${d} | sed -e 's/#include //g'); do
-            CURRENT_FILE_NO=$((CURRENT_FILE_NO+1))
-            #    echo outfile=${RESULT_PATH}/${d}/$(echo ${i} | sed -e 's@/@__@g' -e 's/<//' -e 's/>//' -e 's/\"//g');
-            outfile=${RESULT_PATH}/${d}/$(echo ${i} | sed -e 's@/@__@g' -e 's/<//' -e 's/>//' -e 's/\"//g');
-            #    echo outfile is $outfile
-            [[ -z $verbose ]] || echo "Working on file: ${i}\t\t (file ${CURRENT_FILE_NO}/$TOTAL_INCLUDES)";
 
-            /usr/bin/g++-6 -DBOOST_DISABLE_ASSERTS -DBOOST_LOG_DYN_LINK=1 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DHPX_DISABLE_ASSERTS -DHPX_LIBRARY_EXPORTS -DModeling_Model_Fitter_EXPORTS -I/local/src/fx_hpx/src/../include/gtest/include -I/local/src/fx_hpx/src/../include -I/local/src/fx_hpx/src -I/local/src/fx_hpx/src/lib -I$(pwd) -I/include -I/usr/src/boost/1.63/gcc -I/opt/intel/compilers_and_libraries/linux/mkl/include -I/opt/hpx/1.0/gcc/include -I/opt/hpx/1.0/gcc/include/hpx/external -I/opt/intel/vtune_amplifier_xe_2017.1.0.486011/include -O2 -g -DNDEBUG -fPIC -Wall -g -O3 -Wno-unused-lambda-capture -Wno-unused-variable -Wno-unknown-pragmas -Wno-unused-local-typedefs -Winvalid-pch -std=c++14 -std=gnu++14 -x c++ -E =(echo '#include ' ${i}) -o ${outfile};
+        for i in $(sed -ne '/^#include /p' ${d} | sed -e 's/#include //g'); do
+            CURRENT_FILE_NO=$((CURRENT_FILE_NO+1)) # increment counter
+
+            # Delete the quotes around the include files (i.e. #include <string> becomes string)
+            # Use expansion modifiers (instead of $(cat $i | sed ...) )
+            outfile=${RESULT_PATH}/${d}/${i:gs/\//__/:gs/<//:s/>//:gs/\"//}
+
+            # Wasted a lot of time on this, but it makes the output so much nicer....
+            # Using printf and dynamic column widths, a variable number of spaces are inserted
+            # The (file x/y) is left-aligned at a fixed width of 30 columns from the right-edge of the screen
+            [[ -z $verbose ]] || {
+                local padlength=$(($COLUMNS - 30))
+                local pad="                                                                                                                                                                       "
+                printf "%s%*.*s%s" "Working on file: ${i}" 0 $(($padlength - ${#i} )) $pad " (file ${CURRENT_FILE_NO}/$TOTAL_INCLUDES)"; printf '\n'}
+
+            # Compile command.  Note that this isn't technically 100% correct and should really use the
+            # compile_commands database generated by cmake.  However, for now, this seems to work alright.
+            # Note the last argument -- there is an added -I$(pwd)/${d:h} term which eliminates errors when
+            # include files are in the same directory as the file being compiled, since the actual file being
+            # compiles is a temporary file located in /tmp.  Typically, a file XXX.cc will #include "XXX.hpp"
+            # without any path, since it would normally be located adjacent to the source file.
+
+            # The expansion =(...) saves the output of the internal expression into a temporary file - the temp. file
+            # filename is expanded into the expression.  Here, a temporary file containing just the line #include "XXX"
+            # is created and pre-processed as a C++ source file.
+            /usr/bin/g++-6 -DBOOST_DISABLE_ASSERTS -DBOOST_LOG_DYN_LINK=1 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DHPX_DISABLE_ASSERTS -DHPX_LIBRARY_EXPORTS -DModeling_Model_Fitter_EXPORTS -I/local/src/fx_hpx/src/../include/gtest/include -I/local/src/fx_hpx/src/../include -I/local/src/fx_hpx/src -I/local/src/fx_hpx/src/lib -I$(pwd) -I/include -I/usr/src/boost/1.63/gcc -I/opt/intel/compilers_and_libraries/linux/mkl/include -I/opt/hpx/1.0/gcc/include -I/opt/hpx/1.0/gcc/include/hpx/external -I/opt/intel/vtune_amplifier_xe_2017.1.0.486011/include -O2 -g -DNDEBUG -fPIC -Wall -g -O3 -Wno-unused-lambda-capture -Wno-unused-variable -Wno-unknown-pragmas -Wno-unused-local-typedefs -Winvalid-pch -std=c++14 -std=gnu++14 -x c++ -E =(echo '#include ' ${i}) -o ${outfile} -I$(pwd)/${d:h}
+
+            # Get the length of the pre-processed file in lines
             wc -l ${outfile}>> ${RESULTS}.tmp
+
+            # Delete the pre-processed file (these files are very large)
             rm $outfile
         done
-        rm -r ${RESULT_PATH}/${d:h}
+
+        # Cleanup.  Delete temporary directory containing pre-processed files
+        # Since the temporary directory can be arbitrarily deep, figure out the
+        # top-level directory
+
+        current_path=${d:h}
+        new_d=$d
+        while [[ -e $current_path ]]; do
+            last_d=$new_d
+            new_d=${new_d:h}
+            current_path=${new_d:s/\.//}
+        done
+
+
+        rm -r ${RESULT_PATH}/${last_d}
 
         sort -n ${RESULTS}.tmp > ${RESULTS}
 
+        # Since wc is run from the current directory, the results will have the full
+        # directory structure of the temporary (i.e. pre-processed) files.  This is ugly and confusing
+        # so get rid of it.
+
+        # I had trouble trying to use -i option with sed, where the filename contained misc. characters.
+        # Workaround by using output redirection and then moving the file over the original
         sed -e s/$RESULT_PATH\\\/${d:gs/\//\\\//}// -e s@/@@ $RESULTS > $RESULTS.tmp
         mv $RESULTS.tmp $RESULTS
+
+        # In verbose mode, add an extra padding line to separate output from the next prompt
         [[ -z $verbose ]] || echo ""
+
     done
     unset verbose
+    unset RESULT_PATH
+
+    # Reset REPORTTIME to the previous value
+    REPORTTIME=$OLD_REPORTTIME
 }
