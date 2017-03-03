@@ -1,0 +1,41 @@
+function analyze_headers() {
+
+[[ -z $1 ]] && {echo "${0##*/}: parameter expected" >&2; exit 1}
+
+while getopts "ro:" par; do
+    case $par in
+        (r) RECURSE=1;;
+        (o) OUTPATH=1;;
+        (?) exit 1;;
+    esac
+done
+shift $(( OPTIND - 1 ))
+
+#[[ -z OUTPATH ]] && RESULT_PATH=".header" || RESULT_PATH=${OUTPATH}
+echo RESULT_PATH is $RESULT_PATH
+RESULT_PATH=".header"
+echo RESULT_PATH is $RESULT_PATH
+[[ -d ${RESULT_PATH} ]] || mkdir "${RESULT_PATH}"
+
+#COMPILE_COMMAND="/usr/bin/g++-6 -DBOOST_DISABLE_ASSERTS -DBOOST_LOG_DYN_LINK=1 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DHPX_DISABLE_ASSERTS -DHPX_LIBRARY_EXPORTS -DModeling_Model_Fitter_EXPORTS -I/local/src/fx_hpx/src/../include/gtest/include -I/local/src/fx_hpx/src/../include -I/local/src/fx_hpx/src -I/local/src/fx_hpx/src/lib -I$(pwd) -I/include -I/usr/src/boost/1.63/gcc -I/opt/intel/compilers_and_libraries/linux/mkl/include -I/opt/hpx/1.0/gcc/include -I/opt/hpx/1.0/gcc/include/hpx/external -I/opt/intel/vtune_amplifier_xe_2017.1.0.486011/include -O2 -g -DNDEBUG -fPIC -Wall -g -O3 -Wno-unused-lambda-capture -Wno-unused-variable -Wno-unknown-pragmas -Wno-unused-local-typedefs -Winvalid-pch -std=c++14 -std=gnu++14 -x c++ -E =(echo '#include ' ${i});"
+
+for d in $@; do
+echo $RESULT_PATH/$d
+    [[ -d ${RESULT_PATH}/$d ]] ||  mkdir -p "${RESULT_PATH}/$d“"
+    #exit 1
+#    [[ -d ${RESULT_PATH}/$d ]] || {echo path: ${RESULT_PATH}/$d;mkdir ${RESULT_PATH}/$d}
+    for i in $(sed -ne '/^#include /p' ${d} | sed -e 's/#include //g'); do
+    outfile=${RESULT_PATH}/${d}/$(echo ${i} | sed -e 's@/@_@g' -e 's/<//' -e 's/>//' -e 's/\"//g');
+             echo "Working on file: ${i}";
+             echo $outfile
+#echo             /usr/bin/g++-6 -DBOOST_DISABLE_ASSERTS -DBOOST_LOG_DYN_LINK=1 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DHPX_DISABLE_ASSERTS -DHPX_LIBRARY_EXPORTS -DModeling_Model_Fitter_EXPORTS -I/local/src/fx_hpx/src/../include/gtest/include -I/local/src/fx_hpx/src/../include -I/local/src/fx_hpx/src -I/local/src/fx_hpx/src/lib -I$(pwd) -I/include -I/usr/src/boost/1.63/gcc -I/opt/intel/compilers_and_libraries/linux/mkl/include -I/opt/hpx/1.0/gcc/include -I/opt/hpx/1.0/gcc/include/hpx/external -I/opt/intel/vtune_amplifier_xe_2017.1.0.486011/include -O2 -g -DNDEBUG -fPIC -Wall -g -O3 -Wno-unused-lambda-capture -Wno-unused-variable -Wno-unknown-pragmas -Wno-unused-local-typedefs -Winvalid-pch -std=c++14 -std=gnu++14 -x c++ -E =(echo '#include ' ${i}) -o ${outfile};
+             /usr/bin/g++-6 -DBOOST_DISABLE_ASSERTS -DBOOST_LOG_DYN_LINK=1 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DHPX_DISABLE_ASSERTS -DHPX_LIBRARY_EXPORTS -DModeling_Model_Fitter_EXPORTS -I/local/src/fx_hpx/src/../include/gtest/include -I/local/src/fx_hpx/src/../include -I/local/src/fx_hpx/src -I/local/src/fx_hpx/src/lib -I$(pwd) -I/include -I/usr/src/boost/1.63/gcc -I/opt/intel/compilers_and_libraries/linux/mkl/include -I/opt/hpx/1.0/gcc/include -I/opt/hpx/1.0/gcc/include/hpx/external -I/opt/intel/vtune_amplifier_xe_2017.1.0.486011/include -O2 -g -DNDEBUG -fPIC -Wall -g -O3 -Wno-unused-lambda-capture -Wno-unused-variable -Wno-unknown-pragmas -Wno-unused-local-typedefs -Winvalid-pch -std=c++14 -std=gnu++14 -x c++ -E =(echo '#include ' ${i}) -o ${outfile};
+             wc -l $outfile >> $RESULT_PATH/headers_$d.tmp
+             rm $outfile
+#             rmdir ${RESULT_PATH}/$d
+         done
+         sort -n $RESULT_PATH/headers_$d.tmp > $RESULT_PATH/headers_$d
+         rm $RESULT_PATH/headers_$d.tmp
+         sed "-e s/${RESULT_PATH}/$d//" $RESULT_PATH/headers_$d
+done
+}

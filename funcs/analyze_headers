@@ -1,0 +1,56 @@
+function analyze_headers() {
+
+    [[ -z $1 ]] && {echo "${0##*/}: parameter expected" >&2; exit 1}
+    #verbose=0
+    while getopts "ro:v" par; do
+        case $par in
+            (r) RECURSE=1;;
+            (o) OUTPATH=$OPTARG;;
+            (v) verbose=1;;
+            (?) exit 1;;
+        esac
+    done
+    shift $(( OPTIND - 1 ))
+
+    [[ -n $OUTPATH ]] && RESULT_PATH=${OUTPATH} || RESULT_PATH=".headers"
+    #echo RESULT_PATH is $RESULT_PATH
+    #pause
+    #RESULT_PATH=".headers"
+    #echo RESULT_PATH is $RESULT_PATH
+    [[ -d ${RESULT_PATH} ]] || mkdir "${RESULT_PATH}"
+
+
+    for d in $@; do
+        RESULTS="${RESULT_PATH}/${d:q:gs/\//__/:t}"
+        #echo $RESULTS
+        #pause
+        #[[ -d ${RESULTS:h} ]] || {echo creating directory}
+        echo "" > ${RESULTS}.tmp
+        [[ -d ${RESULT_PATH}/$d ]] ||  { [[ -z $verbose ]] || echo "Creating output directory "${RESULT_PATH}/$d" ..."; mkdir -p "${RESULT_PATH}/$d" }
+        [[ -z $verbose ]] || {
+            echo "Processing file: $d";
+            echo ""
+            TOTAL_INCLUDES=$(sed -ne '/^#include /p' ${d} | wc -l)
+            CURRENT_FILE_NO=0
+        }
+        for i in $(sed -ne '/^#include /p' ${d} | sed -e 's/#include //g'); do
+            CURRENT_FILE_NO=$((CURRENT_FILE_NO+1))
+            #    echo outfile=${RESULT_PATH}/${d}/$(echo ${i} | sed -e 's@/@__@g' -e 's/<//' -e 's/>//' -e 's/\"//g');
+            outfile=${RESULT_PATH}/${d}/$(echo ${i} | sed -e 's@/@__@g' -e 's/<//' -e 's/>//' -e 's/\"//g');
+            #    echo outfile is $outfile
+            [[ -z $verbose ]] || echo "Working on file: ${i}\t\t (file ${CURRENT_FILE_NO}/$TOTAL_INCLUDES)";
+
+            /usr/bin/g++-6 -DBOOST_DISABLE_ASSERTS -DBOOST_LOG_DYN_LINK=1 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DHPX_DISABLE_ASSERTS -DHPX_LIBRARY_EXPORTS -DModeling_Model_Fitter_EXPORTS -I/local/src/fx_hpx/src/../include/gtest/include -I/local/src/fx_hpx/src/../include -I/local/src/fx_hpx/src -I/local/src/fx_hpx/src/lib -I$(pwd) -I/include -I/usr/src/boost/1.63/gcc -I/opt/intel/compilers_and_libraries/linux/mkl/include -I/opt/hpx/1.0/gcc/include -I/opt/hpx/1.0/gcc/include/hpx/external -I/opt/intel/vtune_amplifier_xe_2017.1.0.486011/include -O2 -g -DNDEBUG -fPIC -Wall -g -O3 -Wno-unused-lambda-capture -Wno-unused-variable -Wno-unknown-pragmas -Wno-unused-local-typedefs -Winvalid-pch -std=c++14 -std=gnu++14 -x c++ -E =(echo '#include ' ${i}) -o ${outfile};
+            wc -l ${outfile}>> ${RESULTS}.tmp
+            rm $outfile
+        done
+        rm -r ${RESULT_PATH}/${d:h}
+
+        sort -n ${RESULTS}.tmp > ${RESULTS}
+
+        sed -e s/$RESULT_PATH\\\/${d:gs/\//\\\//}// -e s@/@@ $RESULTS > $RESULTS.tmp
+        mv $RESULTS.tmp $RESULTS
+        [[ -z $verbose ]] || echo ""
+    done
+    unset verbose
+}

@@ -1,0 +1,2 @@
+[[ -z $1 ]] && TEXT="Press any key to continue" || TEXT=$1
+read "?$TEXT"
