@@ -1,0 +1,35 @@
+f2bpurge() {
+
+# Function to purge the n most commonly-occuring /16 networks from the fail2ban log files
+# This function is intended to be called after manually adding those networks to the
+# firewall rules.  This automates the process of removing those banned networks from the
+# log files -- since these networks are blocked by the file server, they are no longer a
+# significant concern
+
+# create an array variable containing just the /16 networks from the fail2ban logs (using
+# the already-existing function f2bnet)
+local iplist=$(echo "$(f2bnet)" | awk '{print $2}');
+
+# if the number of networks to delete from the logs is provided on the command line, use it;
+# otherwise, it will delete all of the networks returned by f2bnet (which is the default arg to tail)
+if (( $# == 0 ));
+   then qty_to_purge=${(w)#iplist};
+else
+    qty_to_purge=$1;
+fi;
+
+
+print "Purging $qty_to_purge /16 Networks from the fail2ban logs: "
+
+# use tail to obtain the last n entries for deletion
+local newlist=$(print ${iplist} | tail -n $qty_to_purge);
+
+# loop through the /16 networks:
+for entry in ${(f)newlist};
+
+# loop through all of the fail2ban log files
+    for f2b_log in /var/log/fail2ban.log*;
+
+        # Delete all lines in each log file containing the given /15 network
+        sudo sed -i "/$entry/d" $f2b_log
+}
